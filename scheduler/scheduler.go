@@ -301,7 +301,9 @@ func (s *Scheduler) Run() {
 		return
 	}
 
-	if st.WorkStarted && !st.BreakStarted && now.After(s.randomizedTimes["START_BREAK"]) {
+	// Only start break if it has NOT been started AND NOT been stopped (i.e., not completed)
+	if st.WorkStarted && !st.BreakStarted && !st.BreakStopped && now.After(s.randomizedTimes["START_BREAK"]) {
+		log.Println("[SCHEDULER] Triggering StartBreak")
 		s.executor.StartBreak()
 		st.BreakStarted = true
 		st.BreakStartTime = time.Now()
