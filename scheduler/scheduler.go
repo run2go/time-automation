@@ -138,10 +138,16 @@ func (s *Scheduler) randomizeAllTimes(now time.Time) {
 		stopWork.Format("15:04:05"),
 	)
 	log.Println(plannedMsg)
-	s.notify.Send("Planned Times", plannedMsg)
+	// Only send notification if webhook is set
+	if s.notify != nil && s.cfg.WebhookURL != "" {
+		s.notify.Send("Planned Times", plannedMsg)
+	}
 }
 
 func (s *Scheduler) fetchCalendar(url, cachePath string, useAuth bool) ([]byte, error) {
+	if url == "" {
+		return nil, nil
+	}
 	var resp *http.Response
 	var err error
 	var data []byte
@@ -195,17 +201,22 @@ fallback:
 
 func (s *Scheduler) isTodayHolidayOrVacation(now time.Time) (bool, string) {
 	day := now.YearDay()
+	// Only fetch if URLs are set
 	if s.lastCalendarFetch != day {
 		s.lastCalendarFetch = day
 		log.Println("[INIT] Fetching holiday and vacation calendars...")
-		_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
-		_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
+		if s.cfg.HolidayAddress != "" {
+			_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
+		}
+		if s.cfg.VacationAddress != "" {
+			_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
+		}
 	}
-	if isICSToday("holiday.ics", now, "") {
+	if s.cfg.HolidayAddress != "" && isICSToday("holiday.ics", now, "") {
 		log.Printf("[SCHEDULER] Today is a public holiday (%s)", now.Format("2006-01-02"))
 		return true, "Public holiday"
 	}
-	if isICSToday("vacation.ics", now, s.cfg.VacationKeyword) {
+	if s.cfg.VacationAddress != "" && isICSToday("vacation.ics", now, s.cfg.VacationKeyword) {
 		log.Printf("[SCHEDULER] Today is a vacation day (%s)", now.Format("2006-01-02"))
 		return true, "Vacation"
 	}
@@ -247,7 +258,7 @@ func (s *Scheduler) Run() {
 	now := time.Now()
 
 	// Holiday/vacation check
-	if s.cfg.HolidayAddress != "" || s.cfg.VacationAddress != "" {
+	if (s.cfg.HolidayAddress != "" || s.cfg.VacationAddress != "") && (s.cfg.HolidayAddress != "" || s.cfg.VacationAddress != "") {
 		if isHoliday, reason := s.isTodayHolidayOrVacation(now); isHoliday {
 			msg := ""
 			if reason == "Public holiday" {
@@ -258,7 +269,9 @@ func (s *Scheduler) Run() {
 				msg = fmt.Sprintf("No work today: %s (%s)", reason, now.Format("2006-01-02"))
 			}
 			log.Println("[SCHEDULER]", msg)
-			s.notify.Send(reason, msg)
+			if s.notify != nil && s.cfg.WebhookURL != "" {
+				s.notify.Send(reason, msg)
+			}
 			// --- Add entry to state.json for this day ---
 			today := now.Format("2006-01-02")
 			st := s.state.Load(today)

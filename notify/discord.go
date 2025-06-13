@@ -17,6 +17,9 @@ func New(url string) *Notifier {
 }
 
 func (n *Notifier) Send(status, message string) {
+	if n.webhook == "" {
+		return
+	}
 	payload := map[string]interface{}{
 		"embeds": []map[string]interface{}{
 			{
