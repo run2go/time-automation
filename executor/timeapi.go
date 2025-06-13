@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/run2go/time-automation/config"
 	"github.com/run2go/time-automation/notify"
@@ -124,15 +125,26 @@ func (e *Executor) post(status interface{}) {
 	url := "https://" + e.cfg.Subdomain + "." + e.cfg.Domain + "/api/post-time"
 	log.Println("[POST] POST", url, "payload:", string(data))
 	e.verboseLog("POST " + url + " payload: " + string(data))
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(data))
-	req.Header.Set("Authorization", e.token)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		msg := "Failed to post: " + err.Error()
+
+	var resp *http.Response
+	var err error
+	maxRetries := 5
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, _ := http.NewRequest("POST", url, bytes.NewBuffer(data))
+		req.Header.Set("Authorization", e.token)
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{}
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			break
+		}
+		log.Printf("[POST] Attempt %d failed: %v", attempt, err)
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil || resp == nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg := "Failed to post after 5 attempts: " + err.Error()
 		log.Println("[POST] " + msg)
-		e.notifier.Send("Post Failed", msg)
+		e.notifier.Send("Post Failed @here", msg)
 		return
 	}
 	defer resp.Body.Close()

@@ -129,7 +129,7 @@ func (s *Scheduler) randomizeAllTimes(now time.Time) {
 	}
 	s.randomizedDay = now.YearDay()
 
-	// Prepare and send planned times notification
+	// Prepare and send planned times notification (log only once)
 	plannedMsg := fmt.Sprintf(
 		"[PLANNED TIMES]\n  START_WORK: %s\n  START_BREAK: %s\n  STOP_BREAK: %s\n  STOP_WORK: %s",
 		startWork.Format("15:04:05"),
@@ -139,11 +139,6 @@ func (s *Scheduler) randomizeAllTimes(now time.Time) {
 	)
 	log.Println(plannedMsg)
 	s.notify.Send("Planned Times", plannedMsg)
-
-	fmt.Println("[PLANNED TIMES]")
-	for k, v := range s.randomizedTimes {
-		fmt.Printf("  %s: %s\n", k, v.Format("15:04:05"))
-	}
 }
 
 func (s *Scheduler) fetchCalendar(url, cachePath string, useAuth bool) ([]byte, error) {
