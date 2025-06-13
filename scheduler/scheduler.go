@@ -311,13 +311,19 @@ func (s *Scheduler) Run() {
 		return
 	}
 
-	if st.BreakStarted && !st.BreakStopped && now.After(s.randomizedTimes["STOP_BREAK"]) {
-		if time.Since(st.BreakStartTime) >= s.cfg.MinBreakDuration {
+	if st.BreakStarted && !st.BreakStopped {
+		plannedStopBreak := s.randomizedTimes["STOP_BREAK"]
+		minBreakMet := time.Since(st.BreakStartTime) >= s.cfg.MinBreakDuration
+		afterPlannedStop := now.After(plannedStopBreak)
+		if minBreakMet && afterPlannedStop {
 			s.executor.StopBreak()
 			st.BreakStopped = true
 			s.state.Save(today, st)
-		} else {
+		} else if !minBreakMet && s.cfg.Verbose {
 			log.Println("[INFO] Not stopping break: minimum duration not met.")
+
+		} else if !afterPlannedStop && s.cfg.Verbose {
+			log.Println("[INFO] Not stopping break: planned stop time not reached.")
 		}
 		return
 	}
@@ -330,7 +336,7 @@ func (s *Scheduler) Run() {
 			// Reset state for today after work is finished, so next day starts fresh
 			s.state.Reset(today)
 			s.state.LastResetDay = now.YearDay()
-		} else {
+		} else if s.cfg.Verbose {
 			log.Println("[INFO] Not stopping work: minimum duration not met.")
 		}
 		return
