@@ -298,16 +298,17 @@ func (s *Scheduler) Run() {
 		st.WorkStarted = true
 		st.WorkStartTime = time.Now()
 		s.state.Save(today, st)
+		log.Printf("[STATE] Updated: work_started=true for %s", today)
 		return
 	}
 
-	// Only start break if it has NOT been started AND NOT been stopped (i.e., not completed)
 	if st.WorkStarted && !st.BreakStarted && !st.BreakStopped && now.After(s.randomizedTimes["START_BREAK"]) {
 		log.Println("[SCHEDULER] Triggering StartBreak")
 		s.executor.StartBreak()
 		st.BreakStarted = true
 		st.BreakStartTime = time.Now()
 		s.state.Save(today, st)
+		log.Printf("[STATE] Updated: break_started=true for %s", today)
 		return
 	}
 
@@ -319,9 +320,9 @@ func (s *Scheduler) Run() {
 			s.executor.StopBreak()
 			st.BreakStopped = true
 			s.state.Save(today, st)
+			log.Printf("[STATE] Updated: break_stopped=true for %s", today)
 		} else if !minBreakMet && s.cfg.Verbose {
 			log.Println("[INFO] Not stopping break: minimum duration not met.")
-
 		} else if !afterPlannedStop && s.cfg.Verbose {
 			log.Println("[INFO] Not stopping break: planned stop time not reached.")
 		}
@@ -333,6 +334,7 @@ func (s *Scheduler) Run() {
 			s.executor.StopWork()
 			st.WorkStopped = true
 			s.state.Save(today, st)
+			log.Printf("[STATE] Updated: work_stopped=true for %s", today)
 			// Reset state for today after work is finished, so next day starts fresh
 			s.state.Reset(today)
 			s.state.LastResetDay = now.YearDay()

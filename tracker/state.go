@@ -4,6 +4,7 @@ package tracker
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -137,11 +138,20 @@ func (s *StateTracker) loadFile() {
 }
 
 func (s *StateTracker) saveFile() {
-	file, _ := os.Create(s.path)
+	file, err := os.Create(s.path)
+	if err != nil {
+		log.Printf("[STATE] Failed to open state file for writing: %v", err)
+		return
+	}
 	defer file.Close()
 	enc := json.NewEncoder(file)
 	enc.SetIndent("", "  ")
-	enc.Encode(s.data)
+	if err := enc.Encode(s.data); err != nil {
+		log.Printf("[STATE] Failed to encode state: %v", err)
+	}
+	if err := file.Sync(); err != nil {
+		log.Printf("[STATE] Failed to sync state file: %v", err)
+	}
 }
 
 func (s *State) Save() error {
