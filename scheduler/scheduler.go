@@ -292,6 +292,12 @@ func (s *Scheduler) Run() {
 	today := now.Format("2006-01-02")
 	st := s.state.Load(today)
 
+	// --- Prevent any further actions if the full cycle is done for the day ---
+	if st.WorkStarted && st.WorkStopped && st.BreakStarted && st.BreakStopped {
+		// All actions for the day are done, do nothing more
+		return
+	}
+
 	if now.After(s.randomizedTimes["START_WORK"]) && !st.WorkStarted {
 		log.Println("[SCHEDULER] Triggering StartWork")
 		s.executor.StartWork()
@@ -335,9 +341,7 @@ func (s *Scheduler) Run() {
 			st.WorkStopped = true
 			s.state.Save(today, st)
 			log.Printf("[STATE] Updated: work_stopped=true for %s", today)
-			// Reset state for today after work is finished, so next day starts fresh
-			s.state.Reset(today)
-			s.state.LastResetDay = now.YearDay()
+			// Do not reset state here; keep the day's state for metrics and to prevent re-triggering
 		} else if s.cfg.Verbose {
 			log.Println("[INFO] Not stopping work: minimum duration not met.")
 		}
