@@ -26,6 +26,6 @@ func main() {
 	log.Println("[START] Time automation running...")
 	for {
 		sched.Run()
-		time.Sleep(time.Minute)
+		time.Sleep(5 * time.Second)
 	}
 }

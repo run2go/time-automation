@@ -25,7 +25,7 @@ func New(cfg config.Config) *Executor {
 	}
 }
 
-func (e *Executor) verboseLog(msg string) {
+func (e *Executor) VerboseLog(msg string) {
 	if e.cfg.Verbose {
 		log.Println("[VERBOSE]", msg)
 	}
@@ -39,7 +39,7 @@ func (e *Executor) login() string {
 	data, _ := json.Marshal(payload)
 	url := "https://" + e.cfg.Subdomain + "." + e.cfg.Domain + "/api/login"
 	log.Println("[LOGIN] Attempting login at:", url)
-	e.verboseLog("POST " + url)
+	e.VerboseLog("POST " + url)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		msg := "Login failed: " + err.Error()
@@ -53,7 +53,7 @@ func (e *Executor) login() string {
 	json.NewDecoder(resp.Body).Decode(&rawResp)
 	rawBytes, _ := json.Marshal(rawResp)
 	log.Println("[LOGIN] Raw response:", string(rawBytes))
-	e.verboseLog("Login response: " + string(rawBytes))
+	e.VerboseLog("Login response: " + string(rawBytes))
 
 	token, _ := rawResp["token"].(string)
 	if token == "" {
@@ -70,8 +70,8 @@ func (e *Executor) post(status interface{}) {
 	log.Printf("[POST] Preparing to post time entry with status: %v", status)
 	if e.cfg.DryRun {
 		log.Println("[POST] DRY_RUN enabled: would POST /api/post-time")
-		e.verboseLog("DRY_RUN enabled: would POST /api/post-time with status: " + toString(status))
-		e.verboseLog("Payload: " + toString(map[string]interface{}{
+		e.VerboseLog("DRY_RUN enabled: would POST /api/post-time with status: " + toString(status))
+		e.VerboseLog("Payload: " + toString(map[string]interface{}{
 			"status":     status,
 			"inputValue": e.cfg.Task,
 			"userid":     e.cfg.Username,
@@ -83,7 +83,7 @@ func (e *Executor) post(status interface{}) {
 		e.token = e.login()
 		if e.token == "" {
 			log.Println("[POST] No token, aborting post")
-			e.verboseLog("No token, aborting post")
+			e.VerboseLog("No token, aborting post")
 			return
 		}
 	}
@@ -124,7 +124,7 @@ func (e *Executor) post(status interface{}) {
 	data, _ := json.Marshal(payload)
 	url := "https://" + e.cfg.Subdomain + "." + e.cfg.Domain + "/api/post-time"
 	log.Println("[POST] POST", url, "payload:", string(data))
-	e.verboseLog("POST " + url + " payload: " + string(data))
+	e.VerboseLog("POST " + url + " payload: " + string(data))
 
 	var resp *http.Response
 	var err error
@@ -149,7 +149,7 @@ func (e *Executor) post(status interface{}) {
 	}
 	defer resp.Body.Close()
 	log.Printf("[POST] Posted status: %v", status)
-	e.verboseLog("Posted status: " + toString(status))
+	e.VerboseLog("Posted status: " + toString(status))
 }
 
 func toString(v interface{}) string {

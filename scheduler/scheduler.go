@@ -254,6 +254,12 @@ func isICSToday(path string, now time.Time, keyword string) bool {
 	return false
 }
 
+func (s *Scheduler) verboseLog(msg string) {
+	if s.executor != nil {
+		s.executor.VerboseLog(msg)
+	}
+}
+
 func (s *Scheduler) Run() {
 	now := time.Now()
 
@@ -327,10 +333,10 @@ func (s *Scheduler) Run() {
 			st.BreakStopped = true
 			s.state.Save(today, st)
 			log.Printf("[STATE] Updated: break_stopped=true for %s", today)
-		} else if !minBreakMet && s.cfg.Verbose {
-			log.Println("[INFO] Not stopping break: minimum duration not met.")
-		} else if !afterPlannedStop && s.cfg.Verbose {
-			log.Println("[INFO] Not stopping break: planned stop time not reached.")
+		} else if !minBreakMet {
+			s.verboseLog("[INFO] Not stopping break: minimum duration not met.")
+		} else if !afterPlannedStop {
+			s.verboseLog("[INFO] Not stopping break: planned stop time not reached.")
 		}
 		return
 	}
@@ -342,8 +348,8 @@ func (s *Scheduler) Run() {
 			s.state.Save(today, st)
 			log.Printf("[STATE] Updated: work_stopped=true for %s", today)
 			// Do not reset state here; keep the day's state for metrics and to prevent re-triggering
-		} else if s.cfg.Verbose {
-			log.Println("[INFO] Not stopping work: minimum duration not met.")
+		} else {
+			s.verboseLog("[INFO] Not stopping work: minimum duration not met.")
 		}
 		return
 	}
