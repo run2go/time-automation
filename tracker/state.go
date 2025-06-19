@@ -22,7 +22,10 @@ type DayState struct {
 	PlannedStartBreak time.Time `json:"planned_start_break,omitempty"`
 	PlannedStopBreak  time.Time `json:"planned_stop_break,omitempty"`
 	PlannedStopWork   time.Time `json:"planned_stop_work,omitempty"`
-	DayNote           string    `json:"day_note,omitempty"` // <-- Add this line
+	DayNote           string    `json:"day_note,omitempty"`
+	// Additional flags
+	IsHoliday  bool
+	IsVacation bool
 }
 
 // Returns the total duration (work + break) for this day.

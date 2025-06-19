@@ -26,9 +26,8 @@ type Scheduler struct {
 	randomizedTimes map[string]time.Time
 	randomizedDay   int
 
-	holidayCachePath  string
-	vacationCachePath string
-	lastCalendarFetch int
+	holidayCheckedDay  int    // Track the last checked day
+	holidayCheckedType string // "holiday", "vacation", or ""
 }
 
 func New(cfg config.Config, s *tracker.StateTracker, e *executor.Executor, n *notify.Notifier) *Scheduler {
@@ -200,17 +199,12 @@ fallback:
 }
 
 func (s *Scheduler) isTodayHolidayOrVacation(now time.Time) (bool, string) {
-	day := now.YearDay()
-	// Only fetch if URLs are set
-	if s.lastCalendarFetch != day {
-		s.lastCalendarFetch = day
-		log.Println("[INIT] Fetching holiday and vacation calendars...")
-		if s.cfg.HolidayAddress != "" {
-			_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
-		}
-		if s.cfg.VacationAddress != "" {
-			_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
-		}
+	log.Println("[INIT] Fetching holiday and vacation calendars...")
+	if s.cfg.HolidayAddress != "" {
+		_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
+	}
+	if s.cfg.VacationAddress != "" {
+		_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
 	}
 	if s.cfg.HolidayAddress != "" && isICSToday("holiday.ics", now, "") {
 		log.Printf("[SCHEDULER] Today is a public holiday (%s)", now.Format("2006-01-02"))
@@ -263,33 +257,47 @@ func (s *Scheduler) verboseLog(msg string) {
 func (s *Scheduler) Run() {
 	now := time.Now()
 
-	// Holiday/vacation check
-	if (s.cfg.HolidayAddress != "" || s.cfg.VacationAddress != "") && (s.cfg.HolidayAddress != "" || s.cfg.VacationAddress != "") {
-		if isHoliday, reason := s.isTodayHolidayOrVacation(now); isHoliday {
-			msg := ""
-			if reason == "Public holiday" {
-				msg = fmt.Sprintf("[HOLIDAY]\n  Today is holiday: %s", now.Format("2006-01-02"))
-			} else if reason == "Vacation" {
-				msg = fmt.Sprintf("[VACATION]\n  Today is vacation: %s", now.Format("2006-01-02"))
-			} else {
-				msg = fmt.Sprintf("No work today: %s (%s)", reason, now.Format("2006-01-02"))
+	// Only check for holiday/vacation if today is a workday
+	if isWorkDay(s.cfg.WorkDays, now) {
+		today := now.Format("2006-01-02")
+		st := s.state.Load(today)
+
+		// Only check and notify if not already marked as holiday/vacation in state and not already checked in memory
+		if !(st.IsHoliday || st.IsVacation) && s.holidayCheckedDay != now.YearDay() {
+			if isHoliday, reason := s.isTodayHolidayOrVacation(now); isHoliday {
+				msg := ""
+				checkedType := ""
+				if reason == "Public holiday" {
+					msg = fmt.Sprintf("[HOLIDAY]\n  Today is holiday: %s", now.Format("2006-01-02"))
+					st.IsHoliday = true
+					checkedType = "holiday"
+				} else if reason == "Vacation" {
+					msg = fmt.Sprintf("[VACATION]\n  Today is vacation: %s", now.Format("2006-01-02"))
+					st.IsVacation = true
+					checkedType = "vacation"
+				} else {
+					msg = fmt.Sprintf("No work today: %s (%s)", reason, now.Format("2006-01-02"))
+					checkedType = "other"
+				}
+				log.Println("[SCHEDULER]", msg)
+				if s.notify != nil && s.cfg.WebhookURL != "" {
+					s.notify.Send(reason, msg)
+				}
+				st.DayNote = reason
+				s.state.Save(today, st)
+				s.holidayCheckedDay = now.YearDay()
+				s.holidayCheckedType = checkedType
+				return
 			}
-			log.Println("[SCHEDULER]", msg)
-			if s.notify != nil && s.cfg.WebhookURL != "" {
-				s.notify.Send(reason, msg)
-			}
-			// --- Add entry to state.json for this day ---
-			today := now.Format("2006-01-02")
-			st := s.state.Load(today)
-			st.DayNote = reason
-			s.state.Save(today, st)
+		} else if st.IsHoliday || st.IsVacation || s.holidayCheckedDay == now.YearDay() {
+			// Already marked or checked, skip further actions for today
 			return
 		}
+	} else {
+		// Not a workday, do nothing (no notification, no state update)
+		return
 	}
 
-	if !isWorkDay(s.cfg.WorkDays, now) {
-		return // skip if not a work day
-	}
 	// Randomize times once per day (at midnight or first run of the day)
 	if s.randomizedDay != now.YearDay() {
 		s.randomizeAllTimes(now)
