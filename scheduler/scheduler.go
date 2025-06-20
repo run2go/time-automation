@@ -26,8 +26,10 @@ type Scheduler struct {
 	randomizedTimes map[string]time.Time
 	randomizedDay   int
 
-	holidayCheckedDay  int    // Track the last checked day
-	holidayCheckedType string // "holiday", "vacation", or ""
+	holidayCheckedDay  int
+	holidayCheckedType string
+
+	calendarFetchedDay int // Track last day calendars were fetched
 }
 
 func New(cfg config.Config, s *tracker.StateTracker, e *executor.Executor, n *notify.Notifier) *Scheduler {
@@ -130,13 +132,13 @@ func (s *Scheduler) randomizeAllTimes(now time.Time) {
 
 	// Prepare and send planned times notification (log only once)
 	plannedMsg := fmt.Sprintf(
-		"[PLANNED TIMES]\n  START_WORK: %s\n  START_BREAK: %s\n  STOP_BREAK: %s\n  STOP_WORK: %s",
+		"START_WORK:  %s\nSTART_BREAK: %s\nSTOP_BREAK:  %s\nSTOP_WORK:   %s",
 		startWork.Format("15:04:05"),
 		startBreak.Format("15:04:05"),
 		stopBreak.Format("15:04:05"),
 		stopWork.Format("15:04:05"),
 	)
-	log.Println(plannedMsg)
+	log.Println("[PLANNED TIMES]\n" + plannedMsg)
 	// Only send notification if webhook is set
 	if s.notify != nil && s.cfg.WebhookURL != "" {
 		s.notify.Send("Planned Times", plannedMsg)
@@ -198,23 +200,61 @@ fallback:
 	return nil, err
 }
 
-func (s *Scheduler) isTodayHolidayOrVacation(now time.Time) (bool, string) {
-	log.Println("[INIT] Fetching holiday and vacation calendars...")
+func (s *Scheduler) isTodayHolidayOrVacation(now time.Time) (bool, string, string) {
+	// Fetch calendars only once per day
+	if s.calendarFetchedDay != now.YearDay() {
+		s.calendarFetchedDay = now.YearDay()
+		log.Println("[INIT] Fetching holiday and vacation calendars...")
+		if s.cfg.HolidayAddress != "" {
+			_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
+		}
+		if s.cfg.VacationAddress != "" {
+			_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
+		}
+	}
+	// Try to extract holiday name if present
+	holidayName := ""
 	if s.cfg.HolidayAddress != "" {
-		_, _ = s.fetchCalendar(s.cfg.HolidayAddress, "holiday.ics", false)
-	}
-	if s.cfg.VacationAddress != "" {
-		_, _ = s.fetchCalendar(s.cfg.VacationAddress, "vacation.ics", true)
-	}
-	if s.cfg.HolidayAddress != "" && isICSToday("holiday.ics", now, "") {
-		log.Printf("[SCHEDULER] Today is a public holiday (%s)", now.Format("2006-01-02"))
-		return true, "Public holiday"
+		holidayName = getICSTodaySummary("holiday.ics", now)
+		if holidayName != "" {
+			log.Printf("[SCHEDULER] Today is a public holiday (%s): %s", now.Format("2006-01-02"), holidayName)
+			return true, "Public holiday", holidayName
+		}
 	}
 	if s.cfg.VacationAddress != "" && isICSToday("vacation.ics", now, s.cfg.VacationKeyword) {
 		log.Printf("[SCHEDULER] Today is a vacation day (%s)", now.Format("2006-01-02"))
-		return true, "Vacation"
+		return true, "Vacation", ""
 	}
-	return false, ""
+	return false, "", ""
+}
+
+// Helper: get the SUMMARY for today's event in an ICS file
+func getICSTodaySummary(path string, now time.Time) string {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	dateStr := now.Format("20060102")
+	inEvent := false
+	summary := ""
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "BEGIN:VEVENT" {
+			inEvent = true
+			summary = ""
+		}
+		if inEvent && strings.HasPrefix(line, "SUMMARY:") {
+			summary = strings.TrimPrefix(line, "SUMMARY:")
+		}
+		if inEvent && strings.HasPrefix(line, "DTSTART") && strings.Contains(line, dateStr) {
+			return summary
+		}
+		if line == "END:VEVENT" {
+			inEvent = false
+		}
+	}
+	return ""
 }
 
 // Checks if today is in the ICS file, optionally filtering by keyword
@@ -264,15 +304,19 @@ func (s *Scheduler) Run() {
 
 		// Only check and notify if not already marked as holiday/vacation in state and not already checked in memory
 		if !(st.IsHoliday || st.IsVacation) && s.holidayCheckedDay != now.YearDay() {
-			if isHoliday, reason := s.isTodayHolidayOrVacation(now); isHoliday {
-				msg := ""
+			if isHoliday, reason, holidayName := s.isTodayHolidayOrVacation(now); isHoliday {
+				var msg string
 				checkedType := ""
 				if reason == "Public holiday" {
-					msg = fmt.Sprintf("[HOLIDAY]\n  Today is holiday: %s", now.Format("2006-01-02"))
+					if holidayName != "" {
+						msg = fmt.Sprintf("%s\n%s", holidayName, now.Format("2006-01-02"))
+					} else {
+						msg = fmt.Sprintf("Public holiday\n%s", now.Format("2006-01-02"))
+					}
 					st.IsHoliday = true
 					checkedType = "holiday"
 				} else if reason == "Vacation" {
-					msg = fmt.Sprintf("[VACATION]\n  Today is vacation: %s", now.Format("2006-01-02"))
+					msg = fmt.Sprintf("Vacation\n%s", now.Format("2006-01-02"))
 					st.IsVacation = true
 					checkedType = "vacation"
 				} else {
