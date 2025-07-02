@@ -267,6 +267,7 @@ func isICSToday(path string, now time.Time, keyword string) bool {
 	dateStr := now.Format("20060102")
 	inEvent := false
 	hasKeyword := keyword == ""
+	keywordLower := strings.ToLower(keyword)
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "BEGIN:VEVENT" {
@@ -274,7 +275,8 @@ func isICSToday(path string, now time.Time, keyword string) bool {
 			hasKeyword = keyword == ""
 		}
 		if inEvent && strings.HasPrefix(line, "SUMMARY:") && keyword != "" {
-			if strings.Contains(line, keyword) {
+			summary := strings.TrimPrefix(line, "SUMMARY:")
+			if strings.Contains(strings.ToLower(summary), keywordLower) {
 				hasKeyword = true
 			}
 		}
