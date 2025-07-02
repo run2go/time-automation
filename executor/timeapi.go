@@ -142,7 +142,14 @@ func (e *Executor) post(status interface{}) {
 		time.Sleep(1 * time.Second)
 	}
 	if err != nil || resp == nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := "Failed to post after 5 attempts: " + err.Error()
+		var msg string
+		if err != nil {
+			msg = "Failed to post after 5 attempts: " + err.Error()
+		} else if resp != nil {
+			msg = "Failed to post after 5 attempts: HTTP status " + resp.Status
+		} else {
+			msg = "Failed to post after 5 attempts: unknown error"
+		}
 		log.Println("[POST] " + msg)
 		e.notifier.Send("Post Failed @here", msg)
 		return
